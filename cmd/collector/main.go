@@ -8,19 +8,33 @@ import (
 )
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
-	// Open SQLite DB (file will be created if not exists)
+	log.Println("========== XRAY USAGE COLLECTOR STARTING ==========")
+
+	log.Println("[1/4] Opening SQLite database...")
+
 	db, err := database.Open("/var/lib/xray-usage/usage.db")
 	if err != nil {
-		log.Fatalf("failed to open database: %v", err)
+		log.Fatalf("Failed to open database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		log.Println("Closing database...")
+		db.Close()
+	}()
 
+	log.Println("[2/4] Database opened successfully.")
+
+	log.Println("[3/4] Creating collector...")
 	c := collector.New(db)
+	log.Println("Collector created.")
+
+	log.Println("[4/4] Running collector...")
 
 	if err := c.Run(); err != nil {
-		log.Fatalf("collector failed: %v", err)
+		log.Fatalf("Collector failed: %v", err)
 	}
 
-	log.Println("collector run completed successfully")
+	log.Println("Collector finished successfully.")
+	log.Println("========== DONE ==========")
 }
