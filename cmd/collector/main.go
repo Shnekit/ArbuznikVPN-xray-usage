@@ -4,7 +4,7 @@ import (
 	"log"
 
 	"github.com/Shnekit/ArbuznikVPN-xray-usage/internal/collector"
-	"github.com/Shnekit/ArbuznikVPN-xray-usage/internal/database"
+	"github.com/Shnekit/ArbuznikVPN-xray-usage/internal/storage"
 )
 
 func main() {
@@ -12,21 +12,17 @@ func main() {
 
 	log.Println("========== XRAY USAGE COLLECTOR STARTING ==========")
 
-	log.Println("[1/4] Opening SQLite database...")
+	log.Println("[1/4] Opening file...")
 
-	db, err := database.Open("/var/lib/xray-usage/usage.db")
+	file, err := storage.Open("/var/lib/xray-usage")
 	if err != nil {
-		log.Fatalf("Failed to open database: %v", err)
+		log.Fatalf("Failed to open file: %v", err)
 	}
-	defer func() {
-		log.Println("Closing database...")
-		db.Close()
-	}()
 
-	log.Println("[2/4] Database opened successfully.")
+	log.Println("[2/4] File opened successfully.")
 
 	log.Println("[3/4] Creating collector...")
-	c := collector.New(db)
+	c := collector.New(file)
 	log.Println("Collector created.")
 
 	log.Println("[4/4] Running collector...")
