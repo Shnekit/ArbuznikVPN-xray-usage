@@ -3,9 +3,9 @@ package collector
 import (
 	"time"
 
-	"github.com/yourusername/xray-usage-collector/internal/database"
-	"github.com/yourusername/xray-usage-collector/internal/model"
-	"github.com/yourusername/xray-usage-collector/internal/xray"
+	"github.com/Shnekit/ArbuznikVPN-xray-usage/internal/database"
+	"github.com/Shnekit/ArbuznikVPN-xray-usage/internal/model"
+	"github.com/Shnekit/ArbuznikVPN-xray-usage/internal/xray"
 )
 
 type Collector struct {

@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/yourusername/xray-usage-collector/internal/model"
+	"github.com/Shnekit/ArbuznikVPN-xray-usage/internal/model"
 )
 
 const apiServer = "127.0.0.1:10085"

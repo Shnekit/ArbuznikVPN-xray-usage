@@ -7,7 +7,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/yourusername/xray-usage-collector/internal/model"
+	"github.com/Shnekit/ArbuznikVPN-xray-usage/internal/model"
 )
 
 type Database struct {

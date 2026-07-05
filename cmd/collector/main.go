@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 
-	"github.com/yourusername/xray-usage-collector/internal/collector"
-	"github.com/yourusername/xray-usage-collector/internal/database"
+	"github.com/Shnekit/ArbuznikVPN-xray-usage/internal/collector"
+	"github.com/Shnekit/ArbuznikVPN-xray-usage/internal/database"
 )
 
 func main() {
