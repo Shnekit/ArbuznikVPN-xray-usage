@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/Shnekit/ArbuznikVPN-xray-usage/internal/model"
 )
@@ -15,16 +15,23 @@ type Database struct {
 }
 
 func Open(path string) (*Database, error) {
-	db, err := sql.Open("sqlite", path)
+
+	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		return nil, err
 	}
 
-	if _, err := db.Exec(`PRAGMA journal_mode=WAL;`); err != nil {
-		return nil, err
-	}
+	// Since we only have a single writer, keep one connection.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
-	if _, err := db.Exec(`PRAGMA foreign_keys=ON;`); err != nil {
+	pragmas := `
+PRAGMA journal_mode = WAL;
+PRAGMA foreign_keys = ON;
+PRAGMA busy_timeout = 5000;
+`
+
+	if _, err := db.Exec(pragmas); err != nil {
 		return nil, err
 	}
 
@@ -244,7 +251,7 @@ FROM snapshots
 		snapshots[snapshot.Email] = snapshot
 	}
 
-	return snapshots, nil
+	return snapshots, rows.Err()
 }
 
 func (d *Database) DebugPrint() error {
@@ -269,7 +276,9 @@ ORDER BY email
 		var up uint64
 		var down uint64
 
-		rows.Scan(&email, &up, &down)
+		if err := rows.Scan(&email, &up, &down); err != nil {
+			return err
+		}
 
 		fmt.Printf(
 			"%s up=%d down=%d\n",
@@ -279,5 +288,5 @@ ORDER BY email
 		)
 	}
 
-	return nil
+	return rows.Err()
 }
