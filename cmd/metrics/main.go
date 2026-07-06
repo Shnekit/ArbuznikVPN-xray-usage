@@ -5,105 +5,71 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
+	"time"
 )
 
 const (
-	dailyPath     = "/var/lib/xray-usage/daily.json"
-	snapshotPath  = "/var/lib/xray-usage/snapshots.json"
+	dailyPath    = "/var/lib/xray-usage/daily.json"
+	snapshotPath = "/var/lib/xray-usage/snapshots.json"
 )
 
-//
-// -------------------- DATA MODELS --------------------
-//
-
-type DailyRecord struct {
-	Day      int64  `json:"day"`
-	Email    string `json:"email"`
+type Usage struct {
 	Upload   uint64 `json:"upload"`
 	Download uint64 `json:"download"`
 }
 
+type DailyData map[string]map[string]Usage
+
 type Snapshot struct {
-	UploadBytes   uint64 `json:"upload_bytes"`
-	DownloadBytes uint64 `json:"download_bytes"`
+	Upload    uint64 `json:"upload"`
+	Download  uint64 `json:"download"`
+	UpdatedAt int64  `json:"updated_at"`
 }
 
-type DailyData []DailyRecord
+type TimeSeriesPoint struct {
+	Time     string `json:"time"`
+	User     string `json:"user"`
+	Upload   uint64 `json:"upload"`
+	Download uint64 `json:"download"`
+}
 
-//
-// -------------------- LOADERS --------------------
-//
-
-func loadDaily(path string) (DailyData, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
+func loadDaily() (DailyData, error) {
 	var data DailyData
-	err = json.Unmarshal(b, &data)
-	return data, err
-}
 
-func loadSnapshots(path string) (map[string]Snapshot, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(dailyPath)
 	if err != nil {
 		return nil, err
 	}
 
-	var data map[string]Snapshot
 	err = json.Unmarshal(b, &data)
-	return data, err
-}
-
-//
-// -------------------- HANDLERS --------------------
-//
-
-// Grafana-friendly endpoint:
-// returns ALL users in one request
-func handlerPerUserUsage(w http.ResponseWriter, r *http.Request) {
-	data, err := loadDaily(dailyPath)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
+		return nil, err
 	}
 
-	type agg struct {
-		Upload   uint64
-		Download uint64
-	}
-
-	result := make(map[string]agg)
-
-	// aggregate per user
-	for _, d := range data {
-		a := result[d.Email]
-		a.Upload += d.Upload
-		a.Download += d.Download
-		result[d.Email] = a
-	}
-
-	// convert map -> array (Grafana-friendly)
-	out := make([]map[string]interface{}, 0, len(result))
-
-	for user, v := range result {
-		out = append(out, map[string]interface{}{
-			"user":     user,
-			"upload":   v.Upload,
-			"download": v.Download,
-		})
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(out)
+	return data, nil
 }
 
-// Optional: raw snapshots (useful for debugging or admin panel)
+func loadSnapshots() (map[string]Snapshot, error) {
+	var data map[string]Snapshot
+
+	b, err := os.ReadFile(snapshotPath)
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal(b, &data)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
+}
+
 func handlerSnapshots(w http.ResponseWriter, r *http.Request) {
-	data, err := loadSnapshots(snapshotPath)
+	data, err := loadSnapshots()
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -111,36 +77,95 @@ func handlerSnapshots(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(data)
 }
 
-func handlerTimeseries(w http.ResponseWriter, r *http.Request) {
-	data, err := loadDaily(dailyPath)
+func handlerUsers(w http.ResponseWriter, r *http.Request) {
+
+	data, err := loadDaily()
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	out := make([]map[string]interface{}, 0, len(data))
+	type UserUsage struct {
+		User     string `json:"user"`
+		Upload   uint64 `json:"upload"`
+		Download uint64 `json:"download"`
+	}
 
-	for _, d := range data {
-		out = append(out, map[string]interface{}{
-			"time":   time.Unix(d.Day, 0).UTC().Format(time.RFC3339),
-			"user":   d.Email,
-			"upload": d.Upload,
-			"download": d.Download,
-		})
+	totals := make(map[string]*UserUsage)
+
+	for _, users := range data {
+		for email, usage := range users {
+
+			if _, ok := totals[email]; !ok {
+				totals[email] = &UserUsage{
+					User: email,
+				}
+			}
+
+			totals[email].Upload += usage.Upload
+			totals[email].Download += usage.Download
+		}
+	}
+
+	var result []UserUsage
+
+	for _, u := range totals {
+		result = append(result, *u)
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].User < result[j].User
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+func handlerTimeseries(w http.ResponseWriter, r *http.Request) {
+
+	data, err := loadDaily()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var result []TimeSeriesPoint
+
+	var days []string
+	for day := range data {
+		days = append(days, day)
+	}
+	sort.Strings(days)
+
+	for _, day := range days {
+
+		t, err := time.Parse("2006-01-02", day)
+		if err != nil {
+			continue
+		}
+
+		users := data[day]
+
+		for email, usage := range users {
+
+			result = append(result, TimeSeriesPoint{
+				Time:     t.Format(time.RFC3339),
+				User:     email,
+				Upload:   usage.Upload,
+				Download: usage.Download,
+			})
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(out)
+	json.NewEncoder(w).Encode(result)
 }
 
-//
-// -------------------- MAIN --------------------
-//
-
 func main() {
+
 	log.Println("Metrics server starting on :8085")
 
-	http.HandleFunc("/usage/users", handlerPerUserUsage)
+	http.HandleFunc("/usage/users", handlerUsers)
 	http.HandleFunc("/usage/snapshots", handlerSnapshots)
 	http.HandleFunc("/usage/timeseries", handlerTimeseries)
 
